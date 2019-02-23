@@ -102,3 +102,15 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# npy
+*.npy
+
+# .DS_Store
+.DS_Store
+
+#.vscode
+.vscode/
+
+#.pyenv
+.pyenv
