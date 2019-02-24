@@ -31,6 +31,8 @@ if __name__ == "__main__":
         type=str,
         default="000000",
         help='Model id which includes the model detail configurations')
+    
+    parser.add_argument('params', nargs='*')
     args = parser.parse_args()
 
     # Prepare cifar-100 data
@@ -41,7 +43,7 @@ if __name__ == "__main__":
 
     # load model class by class file name
     ModelClass = import_class("model." + args.model_class_name)
-    model = ModelClass()
+    model = ModelClass(params=args.params)
 
     # train the model
     model.train_and_evaluate(ds_train, ds_test)
