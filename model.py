@@ -29,20 +29,24 @@ class BaseConfig(object):
 
 
         # training configuration
+        self.keep_checkpoint_max = 5
         self.save_checkpoints_steps = 400
         self.stop_if_no_increase_hook_max_steps_without_increase = 2000
         self.stop_if_no_increase_hook_min_steps = 10000
         self.stop_if_no_increase_hook_run_every_secs = 120
         self.save_summary_steps = 400
         self.num_epochs = 20000
+        self.throttle_secs = 200
+
 
         self.wit_hook = True
 
 
 class BaseModel(object):
-    def __init__(self):
+    def __init__(self, params=None):
         self.config = None
-        self.init_config()
+        self.init_config(params)
+        print(params)
 
     def load_dataset(self, dataset, mode):
         if mode == tf.estimator.ModeKeys.TRAIN:
@@ -72,15 +76,15 @@ class BaseModel(object):
                                      save_summary_steps=self.config.save_summary_steps,
                                      save_checkpoints_steps=self.config.save_checkpoints_steps,
                                      save_checkpoints_secs=None,
-                                     session_config=session_config)
+                                     session_config=session_config,
+                                     keep_checkpoint_max=self.config.keep_checkpoint_max)
 
         estimator = tf.estimator.Estimator(model_fn = self._model_fn, 
                                            config=cfg)
 
         train_hooks, eval_hooks = self.get_hooks(estimator)
-        # os.makedirs(estimator.eval_dir(), exist_ok=True)
         train_spec = tf.estimator.TrainSpec(input_fn=it_train, hooks=train_hooks)
-        eval_spec = tf.estimator.EvalSpec(input_fn=it_eval, hooks=eval_hooks)
+        eval_spec = tf.estimator.EvalSpec(input_fn=it_eval, hooks=eval_hooks, throttle_secs=self.config.throttle_secs)
         tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
 
@@ -96,7 +100,11 @@ class BaseModel(object):
                     util.LoggingTensorHook(
                         collection="logging",
                         every_n_iter=self.config.save_summary_steps,
-                        batch=False)]
+                        batch=False),
+                    tf.contrib.estimator.stop_if_no_increase_hook(
+                        estimator, "f_" + self.config.name, 
+                        max_steps_without_increase=self.config.stop_if_no_increase_hook_max_steps_without_increase, 
+                        min_steps = self.config.stop_if_no_increase_hook_min_steps)]
         
         eval_hooks = [
                     util.SummarySaverHook(every_n_iter=self.config.save_summary_steps,
@@ -145,7 +153,7 @@ class BaseModel(object):
                                           train_op=train_op,
                                           eval_metric_ops=eval_metrics)
 
-    def init_config(self,):
+    def init_config(self, params=None):
         raise NotImplementedError
 
     def model_fn(self, features, labels, mode, params={}):
@@ -154,7 +162,7 @@ class BaseModel(object):
 
 
 class ModelCNN(BaseModel):
-    def init_config(self):
+    def init_config(self, params=None):
         self.config = BaseConfig('ModelCNN')
         self.config.weight_decay = 0.0002
         self.config.drop_rate = 0.3
@@ -186,8 +194,8 @@ class ModelCNN(BaseModel):
         logits = util.dense_layers(features, [100],
                                     linear_top_layer=False,
                                     weight_decay=self.config.weight_decay)
-        logits = tf.identity(logits, name='model_output')
         logits = tf.reduce_mean(logits, axis=[1, 2])
+        logits = tf.identity(logits, name='model_output')
 
         predictions = tf.argmax(logits, axis=-1)
 
@@ -197,5 +205,62 @@ class ModelCNN(BaseModel):
             "accuracy": tf.metrics.accuracy(labels, predictions),
             "top_1_error": tf.metrics.mean(util.top_k_error(labels, logits, 1)),
         }
+
+        return {"predictions": predictions}, loss, eval_metrics
+
+class AlexNet(BaseModel):
+    def init_config(self, params=None):
+        self.config = BaseConfig('AlexNet')
+        self.config.weight_decay = 0.0002
+        self.config.drop_rate = 0.3
+        self.config.normalization_val = 1
+
+
+    
+    def model_fn(self, images, labels, mode, params):
+        """CNN classifier model."""
+
+        training = mode == tf.estimator.ModeKeys.TRAIN
+        drop_rate = self.config.drop_rate if training else 0.0
+
+        features = tf.divide(images, tf.constant(self.config.normalization_val, tf.float32), name='input_placeholder')
+
+        features = util.conv_layers(
+                                    images,
+                                    filters=[64, 192, 384, 256, 256],
+                                    kernels=[11, 5, 3, 3, 3],
+                                    strides=[4, 1, 1, 1],
+                                    pool_sizes=[2, 2, 2, 2, 2],
+                                    pool_strides=[2, 2, 2, 2, 2]
+                                   )
+
+        features = tf.contrib.layers.flatten(features)
+
+        logits = util.dense_layers(
+                    features, [512, 100],
+                    drop_rates=drop_rate,
+                    linear_top_layer=True)
+
+        predictions = tf.argmax(logits, axis=-1)
+
+        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+        logits = tf.identity(logits, name='model_output')
+
+        predictions = tf.argmax(logits, axis=-1)
+
+        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+        tf.summary.image("images", images)
+
+        eval_metrics = {
+            "accuracy": tf.metrics.accuracy(labels, predictions),
+            "top_1_error": tf.metrics.mean(util.top_k_error(labels, logits, 1)),
+        }
+
+        tf.add_to_collection(
+            "batch_logging", tf.identity(labels, name="labels"))
+        tf.add_to_collection(
+            "batch_logging", tf.identity(predictions, name="predictions"))
 
         return {"predictions": predictions}, loss, eval_metrics
