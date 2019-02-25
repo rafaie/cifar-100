@@ -30,12 +30,12 @@ class BaseConfig(object):
 
 
         # training configuration
-        self.keep_checkpoint_max = 5
-        self.save_checkpoints_steps = 400
+        self.keep_checkpoint_max = 10
+        self.save_checkpoints_steps = 1000
         self.stop_if_no_increase_hook_max_steps_without_increase = 5000
         self.stop_if_no_increase_hook_min_steps = 50000
         self.stop_if_no_increase_hook_run_every_secs = 120
-        self.save_summary_steps = 400
+        self.save_summary_steps = 100
         self.num_epochs = 20000
         self.throttle_secs = 0
         self.wit_hook = True
@@ -225,7 +225,7 @@ class ModelCNN(BaseModel):
 class AlexNet(BaseModel):
     def init_config(self, params=None):
         if 'img_augmentation' in params:
-            self.config = BaseConfig('AlexNet')
+            self.config = BaseConfig('AlexNet_aug')
             self.config.img_augmentation = True
         else:
             self.config = BaseConfig('AlexNet')
