@@ -26,6 +26,7 @@ class BaseConfig(object):
         self.decay_rate = 0.1
         self.decay_steps = 10000
         self.constant_steps = 20000
+        self.img_augmentation = False
 
 
         # training configuration
@@ -36,28 +37,39 @@ class BaseConfig(object):
         self.stop_if_no_increase_hook_run_every_secs = 120
         self.save_summary_steps = 400
         self.num_epochs = 20000
-        self.throttle_secs = 200
+        self.throttle_secs = 0
         self.wit_hook = True
 
 
 class BaseModel(object):
     def __init__(self, params=None):
-        self.config = None
+        self.config = None  
         self.init_config(params)
-        print(params)
+
+    def do_augmentation(self, image, lable):
+        image = tf.image.resize_image_with_crop_or_pad(image, 32 + 4, 32 + 4)
+        image = tf.random_crop(image, [32, 32, 3])
+        image = tf.image.random_flip_left_right(image)
+        return image, lable
 
     def load_dataset(self, dataset, mode):
-        if mode == tf.estimator.ModeKeys.TRAIN:
-            if self.config.shuffle_and_repeat is True:
-                dataset = dataset.shuffle(self.config.shuffle_buffer_size).repeat(
-                                          self.config.num_epochs).batch(self.config.batch_size)
-            else:
-                dataset = dataset.batch(self.config.batch_size)
-        elif mode == tf.estimator.ModeKeys.EVAL:
-            dataset = dataset.batch(self.config.batch_size)
+        with tf.device(tf.DeviceSpec(device_type="CPU", device_index=0)):
+            if mode == tf.estimator.ModeKeys.TRAIN:
+                if self.config.shuffle_and_repeat is True:
+                    dataset = dataset.shuffle(self.config.shuffle_buffer_size).repeat(
+                                            self.config.num_epochs)
 
-        ds_iter = dataset.make_one_shot_iterator()
-        return ds_iter.get_next()
+                if self.config.img_augmentation == True:
+                    print('img_augmentation is activated')
+                    dataset = dataset.map(self.do_augmentation, num_parallel_calls=4)
+
+                dataset = dataset.batch(self.config.batch_size)
+                
+            elif mode == tf.estimator.ModeKeys.EVAL:
+                dataset = dataset.batch(self.config.batch_size)
+
+            ds_iter = dataset.make_one_shot_iterator()
+            return ds_iter.get_next()
 
     def train_and_evaluate(self, ds_train, ds_eval):
         # Prepare dataset
@@ -161,7 +173,11 @@ class BaseModel(object):
 
 class ModelCNN(BaseModel):
     def init_config(self, params=None):
-        self.config = BaseConfig('ModelCNN')
+        if 'img_augmentation' in params:
+            self.config = BaseConfig('ModelCNN_aug')
+            self.config.img_augmentation = True
+        else:
+             self.config = BaseConfig('ModelCNN')
         self.config.weight_decay = 0.0002
         self.config.drop_rate = 0.3
         self.config.normalization_val = 1
@@ -208,11 +224,14 @@ class ModelCNN(BaseModel):
 
 class AlexNet(BaseModel):
     def init_config(self, params=None):
-        self.config = BaseConfig('AlexNet')
+        if 'img_augmentation' in params:
+            self.config = BaseConfig('AlexNet')
+            self.config.img_augmentation = True
+        else:
+            self.config = BaseConfig('AlexNet')
         self.config.weight_decay = 0.002
         self.config.drop_rate = 0.5
         self.config.normalization_val = 1
-
 
     
     def model_fn(self, images, labels, mode, params):
@@ -233,9 +252,9 @@ class AlexNet(BaseModel):
         #                            )
 
         features = util.conv_layers(images,
-                                   filters=[64, 128, 256],
-                                   kernels=[3, 3, 3],
-                                   pool_sizes=[2, 2, 2])
+                                   filters=[64, 192, 384, 256, 256],
+                                   kernels=[3, 3, 3, 3, 3],
+                                   pool_sizes=[2, 2, 2, 2, 2])
         features = tf.contrib.layers.flatten(features)
 
         logits = util.dense_layers(
