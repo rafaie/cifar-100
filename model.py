@@ -31,14 +31,12 @@ class BaseConfig(object):
         # training configuration
         self.keep_checkpoint_max = 5
         self.save_checkpoints_steps = 400
-        self.stop_if_no_increase_hook_max_steps_without_increase = 2000
-        self.stop_if_no_increase_hook_min_steps = 10000
+        self.stop_if_no_increase_hook_max_steps_without_increase = 5000
+        self.stop_if_no_increase_hook_min_steps = 50000
         self.stop_if_no_increase_hook_run_every_secs = 120
         self.save_summary_steps = 400
         self.num_epochs = 20000
         self.throttle_secs = 200
-
-
         self.wit_hook = True
 
 
@@ -211,8 +209,8 @@ class ModelCNN(BaseModel):
 class AlexNet(BaseModel):
     def init_config(self, params=None):
         self.config = BaseConfig('AlexNet')
-        self.config.weight_decay = 0.0002
-        self.config.drop_rate = 0.3
+        self.config.weight_decay = 0.002
+        self.config.drop_rate = 0.5
         self.config.normalization_val = 1
 
 
@@ -225,15 +223,19 @@ class AlexNet(BaseModel):
 
         features = tf.divide(images, tf.constant(self.config.normalization_val, tf.float32), name='input_placeholder')
 
-        features = util.conv_layers(
-                                    images,
-                                    filters=[64, 192, 384, 256, 256],
-                                    kernels=[11, 5, 3, 3, 3],
-                                    strides=[4, 1, 1, 1],
-                                    pool_sizes=[2, 2, 2, 2, 2],
-                                    pool_strides=[2, 2, 2, 2, 2]
-                                   )
+        # features = util.conv_layers(
+        #                             images,
+        #                             filters=[64, 192, 384, 256, 256],
+        #                             kernels=[11, 5, 3, 3, 3],
+        #                             strides=[4, 1, 1, 1],
+        #                             pool_sizes=[2, 2, 2, 2, 2],
+        #                             pool_strides=[2, 2, 2, 2, 2]
+        #                            )
 
+        features = util.conv_layers(images,
+                                   filters=[64, 128, 256],
+                                   kernels=[3, 3, 3],
+                                   pool_sizes=[2, 2, 2])
         features = tf.contrib.layers.flatten(features)
 
         logits = util.dense_layers(
