@@ -100,7 +100,7 @@ class BaseModel(object):
                         every_n_iter=self.config.save_summary_steps,
                         batch=False),
                     tf.contrib.estimator.stop_if_no_increase_hook(
-                        estimator, "f_" + self.config.name, 
+                        estimator, "accuracy", 
                         max_steps_without_increase=self.config.stop_if_no_increase_hook_max_steps_without_increase, 
                         min_steps = self.config.stop_if_no_increase_hook_min_steps)]
         
