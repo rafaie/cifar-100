@@ -80,9 +80,36 @@ def prepare_data():
      download_data()
      return load_data()
 
-
 def get_dataset():
      train_x, train_y, test_x, test_y = prepare_data()
+
+     ds_train = tf.data.Dataset.from_tensor_slices((train_x, train_y))
+     ds_test  = tf.data.Dataset.from_tensor_slices((test_x, test_y))
+
+     return (ds_train, ds_test)
+
+def load_data2(data_dir='./data', test_size = 0.10):
+    # Load train data 
+    images = np.load(os.path.join(data_dir, 'cifar_images.npy'))
+    images = images.reshape((len(images), 32, 32, 3)).astype(np.float32)
+    labels_tmp = np.load(os.path.join(data_dir, 'cifar_labels.npy'))
+    labels = labels_tmp.astype(np.int32)
+
+    s1 = round(images.shape[0] * (1 - test_size))
+    train_x = images[:s1]
+    train_y = labels[:s1]
+    test_x = images[s1:]
+    test_y = labels[s1:]
+
+    print(train_x.shape, test_x.shape)
+    return (train_x, train_y, test_x, test_y)
+
+def prepare_data2():
+     return load_data2()
+
+
+def get_dataset2():
+     train_x, train_y, test_x, test_y = prepare_data2()
 
      ds_train = tf.data.Dataset.from_tensor_slices((train_x, train_y))
      ds_test  = tf.data.Dataset.from_tensor_slices((test_x, test_y))

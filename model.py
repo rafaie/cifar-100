@@ -12,26 +12,32 @@ import util
 tf.logging.set_verbosity(tf.logging.INFO)  # if you want to see the log info
 
 class BaseConfig(object):
-    def __init__(self, name='test_model'):
+    def __init__(self, name, data_path, img_augmentation, dynamic_learning_rate, batch_size):
         self.name = name
         self.learning_rate = 0.001
 
         self.model_dir = './' + self.name
+        if img_augmentation is True:
+            self.model_dir += '_aug'
+        if dynamic_learning_rate is True:
+            self.model_dir += '_dyn'
+        self.model_dir += '_' + str(batch_size)
+        self.model_dir += '_' + data_path.replace('.', '').replace('\\', '').replace('/', '')
         os.makedirs(self.model_dir, exist_ok=True)
 
         # config for `tf.data.Dataset`
         self.shuffle_and_repeat = True
         self.shuffle_buffer_size = 10000
-        self.batch_size = 1000
+        self.batch_size = batch_size
         self.decay_rate = 0.1
         self.decay_steps = 10000
         self.constant_steps = 20000
-        self.img_augmentation = False
+        self.img_augmentation = img_augmentation
 
 
         # training configuration
         self.keep_checkpoint_max = 10
-        self.save_checkpoints_steps = 1000
+        self.save_checkpoints_steps = 100
         self.stop_if_no_increase_hook_max_steps_without_increase = 5000
         self.stop_if_no_increase_hook_min_steps = 50000
         self.stop_if_no_increase_hook_run_every_secs = 120
@@ -39,15 +45,28 @@ class BaseConfig(object):
         self.num_epochs = 20000
         self.throttle_secs = 0
         self.wit_hook = True
+        self.dynamic_learning_rate = dynamic_learning_rate
+        self.data_path = data_path
+        self.learning_rate_warm_up_step = 10000
 
 
 class BaseModel(object):
-    def __init__(self, params=None):
+    def __init__(self, data_path=None, 
+                       img_augmentation=False,
+                       dynamic_learning_rate=False,
+                       batch_size=120,
+                       params=None):
         self.config = None  
-        self.init_config(params)
+        self.init_config(data_path, img_augmentation, dynamic_learning_rate,
+                         batch_size, params)
+        # self.config.data_path = data_path
+        # self.config.img_augmentation = img_augmentation
+        # self.config.dynamic_learning_rate = dynamic_learning_rate
+        # self.config.batch_size = batch_size
+
 
     def do_augmentation(self, image, lable):
-        image = tf.image.resize_image_with_crop_or_pad(image, 32 + 4, 32 + 4)
+        image = tf.image.resize_image_with_crop_or_pad(image, 32 + 5, 32 + 5)
         image = tf.random_crop(image, [32, 32, 3])
         image = tf.image.random_flip_left_right(image)
         return image, lable
@@ -123,7 +142,16 @@ class BaseModel(object):
         return (train_hooks, eval_hooks)
 
     def get_learning_rate(self):
-        return self.config.learning_rate
+        if self.config.dynamic_learning_rate is False:
+            return self.config.learning_rate
+        
+        # Exponenetial decay
+        step = tf.to_float(tf.train.get_or_create_global_step())
+        learning_rate = self.config.learning_rate
+        if step > self.config.learning_rate_warm_up_step:
+            learning_rate *= 0.35 ** (step // 10000)
+
+        return learning_rate
 
     def _model_fn(self, features, labels, mode, params={}):
         global_step = tf.train.get_or_create_global_step()
@@ -163,7 +191,8 @@ class BaseModel(object):
                                           train_op=train_op,
                                           eval_metric_ops=eval_metrics)
 
-    def init_config(self, params=None):
+    def init_config(self, data_path, img_augmentation, dynamic_learning_rate,
+                         batch_size, params=None):
         raise NotImplementedError
 
     def model_fn(self, features, labels, mode, params={}):
@@ -171,13 +200,10 @@ class BaseModel(object):
 
 
 
-class ModelCNN(BaseModel):
-    def init_config(self, params=None):
-        if 'img_augmentation' in params:
-            self.config = BaseConfig('ModelCNN_aug')
-            self.config.img_augmentation = True
-        else:
-             self.config = BaseConfig('ModelCNN')
+class Resnet(BaseModel):
+    def init_config(self, data_path, img_augmentation, dynamic_learning_rate, batch_size, params=None):
+        self.config = BaseConfig('Resnet', params, data_path, 
+                                 img_augmentation, dynamic_learning_rate, batch_size)
         self.config.weight_decay = 0.0002
         self.config.drop_rate = 0.3
         self.config.normalization_val = 1
@@ -223,12 +249,9 @@ class ModelCNN(BaseModel):
         return {"predictions": predictions}, loss, eval_metrics
 
 class AlexNet(BaseModel):
-    def init_config(self, params=None):
-        if 'img_augmentation' in params:
-            self.config = BaseConfig('AlexNet_aug')
-            self.config.img_augmentation = True
-        else:
-            self.config = BaseConfig('AlexNet')
+    def init_config(self, data_path, img_augmentation, dynamic_learning_rate, batch_size, params=None):
+        self.config = BaseConfig('AlexNet', data_path, 
+                                 img_augmentation, dynamic_learning_rate, batch_size)
         self.config.weight_decay = 0.002
         self.config.drop_rate = 0.5
         self.config.normalization_val = 1
