@@ -22,7 +22,7 @@ class BaseConfig(object):
         # config for `tf.data.Dataset`
         self.shuffle_and_repeat = True
         self.shuffle_buffer_size = 10000
-        self.batch_size = 128
+        self.batch_size = 1000
         self.decay_rate = 0.1
         self.decay_steps = 10000
         self.constant_steps = 20000
@@ -254,10 +254,6 @@ class AlexNet(BaseModel):
                     linear_top_layer=True)
 
         logits = tf.identity(logits, name='output')
-
-        predictions = tf.argmax(logits, axis=-1)
-
-        loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
         predictions = tf.argmax(logits, axis=-1)
 
