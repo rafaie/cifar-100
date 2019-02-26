@@ -209,7 +209,7 @@ class ModelCNN(BaseModel):
                                     linear_top_layer=False,
                                     weight_decay=self.config.weight_decay)
         logits = tf.reduce_mean(logits, axis=[1, 2])
-        logits = tf.identity(logits, name='model_output')
+        logits = tf.identity(logits, name='output')
 
         predictions = tf.argmax(logits, axis=-1)
 
@@ -242,15 +242,6 @@ class AlexNet(BaseModel):
 
         features = tf.divide(images, tf.constant(self.config.normalization_val, tf.float32), name='input_placeholder')
 
-        # features = util.conv_layers(
-        #                             images,
-        #                             filters=[64, 192, 384, 256, 256],
-        #                             kernels=[11, 5, 3, 3, 3],
-        #                             strides=[4, 1, 1, 1],
-        #                             pool_sizes=[2, 2, 2, 2, 2],
-        #                             pool_strides=[2, 2, 2, 2, 2]
-        #                            )
-
         features = util.conv_layers(images,
                                    filters=[64, 192, 384, 256, 256],
                                    kernels=[3, 3, 3, 3, 3],
@@ -262,11 +253,11 @@ class AlexNet(BaseModel):
                     drop_rates=drop_rate,
                     linear_top_layer=True)
 
+        logits = tf.identity(logits, name='output')
+
         predictions = tf.argmax(logits, axis=-1)
 
         loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
-
-        logits = tf.identity(logits, name='model_output')
 
         predictions = tf.argmax(logits, axis=-1)
 
