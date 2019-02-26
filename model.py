@@ -53,23 +53,23 @@ class BaseModel(object):
         return image, lable
 
     def load_dataset(self, dataset, mode):
-        with tf.device(tf.DeviceSpec(device_type="CPU", device_index=0)):
-            if mode == tf.estimator.ModeKeys.TRAIN:
-                if self.config.shuffle_and_repeat is True:
-                    dataset = dataset.shuffle(self.config.shuffle_buffer_size).repeat(
-                                            self.config.num_epochs)
+        # with tf.device(tf.DeviceSpec(device_type="CPU", device_index=0)):
+        if mode == tf.estimator.ModeKeys.TRAIN:
+            if self.config.shuffle_and_repeat is True:
+                dataset = dataset.shuffle(self.config.shuffle_buffer_size).repeat(
+                                        self.config.num_epochs)
 
-                if self.config.img_augmentation == True:
-                    print('img_augmentation is activated')
-                    dataset = dataset.map(self.do_augmentation, num_parallel_calls=4)
+            if self.config.img_augmentation == True:
+                print('img_augmentation is activated')
+                dataset = dataset.map(self.do_augmentation, num_parallel_calls=4)
 
-                dataset = dataset.batch(self.config.batch_size)
-                
-            elif mode == tf.estimator.ModeKeys.EVAL:
-                dataset = dataset.batch(self.config.batch_size)
+            dataset = dataset.batch(self.config.batch_size)
+            
+        elif mode == tf.estimator.ModeKeys.EVAL:
+            dataset = dataset.batch(self.config.batch_size)
 
-            ds_iter = dataset.make_one_shot_iterator()
-            return ds_iter.get_next()
+        ds_iter = dataset.make_one_shot_iterator()
+        return ds_iter.get_next()
 
     def train_and_evaluate(self, ds_train, ds_eval):
         # Prepare dataset
