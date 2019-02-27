@@ -20,7 +20,7 @@ def import_class(name):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Classify MNIST images.')
+    parser = argparse.ArgumentParser(description='Classify Cifar-100 images.')
     parser.add_argument('-n',
         '--model_class_name',
         type=str,
