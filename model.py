@@ -202,7 +202,7 @@ class BaseModel(object):
 
 class Resnet(BaseModel):
     def init_config(self, data_path, img_augmentation, dynamic_learning_rate, batch_size, params=None):
-        self.config = BaseConfig('Resnet', params, data_path, 
+        self.config = BaseConfig('Resnet', data_path, 
                                  img_augmentation, dynamic_learning_rate, batch_size)
         self.config.weight_decay = 0.0002
         self.config.drop_rate = 0.3
@@ -265,7 +265,7 @@ class AlexNet(BaseModel):
 
         features = tf.divide(images, tf.constant(self.config.normalization_val, tf.float32), name='input_placeholder')
 
-        features = util.conv_layers(images,
+        features = util.conv_layers(features,
                                    filters=[64, 192, 384, 256, 256],
                                    kernels=[3, 3, 3, 3, 3],
                                    pool_sizes=[2, 2, 2, 2, 2])
