@@ -13,6 +13,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 
 from keras.datasets import cifar100
+from keras import regularizers
 
 def load_imagenet_dataset():
     # cfair = "/work/cse496dl/shared/homework/02/"
@@ -24,13 +25,22 @@ def load_imagenet_dataset():
     x_test = x_test.astype('float32') / 255.
     x_train = x_train.reshape((len(x_train), np.prod(x_train.shape[1:])))
     x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
+    # x_train = np.reshape(x_train, (len(x_train), 32, 32, 3))  # adapt this if using `channels_first` image data format
+    # x_test = np.reshape(x_test, (len(x_test), 32, 32, 3))
+
+    return x_train, x_test
+
+def normalizedData():
+    (x_train, _), (x_test, _) = cifar100.load_data()
+    x_train = x_train.astype('float32') / 255.
+    x_test = x_test.astype('float32') / 255.
     x_train = np.reshape(x_train, (len(x_train), 32, 32, 3))  # adapt this if using `channels_first` image data format
     x_test = np.reshape(x_test, (len(x_test), 32, 32, 3))
 
     return x_train, x_test
 
 def load_cifar100_dataset():
-
+    pass
 
 
 def get_autoencoder_model_vanilla():
@@ -42,12 +52,7 @@ def get_autoencoder_model_vanilla():
     inputLayer = tf.keras.Input(shape = (inputSize,))
     encoderLayer = tf.keras.layers.Dense(hiddenSize, activation='relu')(inputLayer)
     decoderLayer = tf.keras.layers.Dense(outputSize, activation='sigmoid')(encoderLayer)
-
     autoencoder = tf.keras.Model(inputLayer, decoderLayer)
-
-
-
-    # autoencoder.compile(optimizer='adam', loss='mse')
 
     return autoencoder
 
@@ -74,38 +79,68 @@ def get_VanillaDecoderModel(autoEncoder):
     return decoder
 
 def get_autoencoder_model_multilayer():
-    pass
+    inputSize = 3072
+    outputSize = 3072
+    hiddenSize = 1539
+    codeSize = 128
+
+    input = tf.keras.layers.Input(shape=(inputSize,))
+
+
+    firstDense = tf.keras.layers.Dense(hiddenSize, activation='relu')(input)
+    encoder = tf.keras.layers.Dense(codeSize, activation='relu')(firstDense)
+
+    secondDense = tf.keras.layers.Dense(hiddenSize, activation='relu')(encoder)
+    decoder = tf.keras.layers.Dense(outputSize, activation='sigmoid')(secondDense)
+
+    multiLayerAutoEncoder = tf.keras.Model(input, decoder)
+
+    return multiLayerAutoEncoder
 
 def get_autoencoder_model_convolutional():
 
-    ## 28 28 1
+
     input = tf.keras.Input(shape=(32, 32, 3))
 
     # Encoder
-    firstEncodeConvLayer = tf.keras.layers.Conv2D(8, (5, 5), activation='relu', padding='same')(input)
-    firstPoolLayer = tf.keras.layers.MaxPooling2D((2, 2), padding='same')(firstEncodeConvLayer)
-    secondEncodeConvLayer = tf.keras.layers.Conv2D(16, (5, 5), activation='relu', padding='same')(firstPoolLayer)
-    secondPoolLayer = tf.keras.layers.MaxPooling2D((2, 2), padding='same')(secondEncodeConvLayer)
-    thirdEncodeConvLayer = tf.keras.layers.Conv2D(32, (5, 5), activation='relu', padding='same')(secondPoolLayer)
-    encoded = tf.keras.layers.MaxPooling2D((4, 4), padding='same')(thirdEncodeConvLayer)
+    x = tf.keras.layers.Conv2D(64, (3, 3), activation='relu', padding='same')(input)
+    x = tf.keras.layers.MaxPooling2D((2, 2), padding='same')(x)
+    x = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', padding='same')(x)
+    x = tf.keras.layers.MaxPooling2D((2, 2), padding='same')(x)
+    x = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', padding='same')(x)
+    encoded = tf.keras.layers.MaxPooling2D((2, 2), padding='same')(x)
 
     # Decoder
-    firstDecodeConvLayer = tf.keras.layers.Conv2D(32, (5, 5), activation='relu', padding='same')(encoded)
-    firstUp= tf.keras.layers.UpSampling2D((2, 2))(firstDecodeConvLayer)
-    secondDecodeConvLayer = tf.keras.layers.Conv2D(16, (5, 5), activation='relu', padding='same')(firstUp)
-    secondUp = tf.keras.layers.UpSampling2D((2, 2))(secondDecodeConvLayer)
-    thirdDecodeConvLayer= tf.keras.layers.Conv2D(3, (5, 5), activation='relu')(secondUp)
-    thirdUp = tf.keras.layers.UpSampling2D((2, 2))(thirdDecodeConvLayer)
-    decoded = tf.keras.layers.Conv2D(3, (5, 5), activation='sigmoid', padding='same')(thirdUp)
+    x = tf.keras.layers.Conv2D(16, (3, 3), activation='relu', padding='same')(encoded)
+    x = tf.keras.layers.UpSampling2D((2, 2))(x)
+    x = tf.keras.layers.Conv2D(32, (3, 3), activation='relu', padding='same')(x)
+    x = tf.keras.layers.UpSampling2D((2, 2))(x)
+    x = tf.keras.layers.Conv2D(64, (1, 1), activation='relu')(x)
+    x = tf.keras.layers.UpSampling2D((2, 2))(x)
+    decoded = tf.keras.layers.Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)
 
-    convAutoEncoder = tf.keras.Model(input, thirdDecodeConvLayer)
+    convAutoEncoder = tf.keras.Model(input, decoded)
+
     return convAutoEncoder
 
 
-def get_autoencoder_model_regularized():
+def get_autoencoder_model_regularized_Sparse():
+    inputSize = 3072
+    outputSize = 3072
+    hiddenSize = 128
+
+    input = tf.keras.layers.Input(shape=(inputSize,))
+
+    encoder = tf.keras.layers.Dense(hiddenSize, activation='relu', activity_regularizer=regularizers.l1(10e-5))(input)
+    decoder = tf.keras.layers.Dense(outputSize, activation='sigmoid')(encoder)
+
+    autoencoder = tf.keras.Model(encoder, decoder)
+    autoencoder.compile(optimizer='adam', loss='mse')
+
+
     pass
 
-def plotImages(testData, decodedImages):
+def plotImages(testData, decodedImages, name):
     n = 10  # how many digits we will display
     plt.figure(figsize=(20, 4))
     for i in range(n):
@@ -123,53 +158,66 @@ def plotImages(testData, decodedImages):
         ax.get_xaxis().set_visible(False)
         ax.get_yaxis().set_visible(False)
 
-    plt.show()
+    plt.savefig(('/autoEncoders/' + name + '/img/comparisonPicture'))
+
+
+
+def train_save_singleAutoEncoder(name, e, b):
+
+    trainData, testData = load_imagenet_dataset()
+    if(name == 'conv'):
+        autoEncoder = get_autoencoder_model_convolutional()
+        trainData, testData = normalizedData()
+    elif name == 'sparse':
+        autoEncoder = get_autoencoder_model_regularized_Sparse()
+    elif name == 'multi':
+        autoEncoder = get_autoencoder_model_multilayer()
+    elif name == 'vanilla':
+        autoEncoder = get_autoencoder_model_vanilla()
+
+
+    autoEncoder.compile(optimizer='adam', loss='mse')
+    autoEncoder.fit(trainData, trainData, epochs=e, batch_size=b, shuffle=True,
+                        validation_data=(testData, testData))
+
+    tf.keras.models.save_model(
+        autoEncoder,
+        ('/autoEncoders/' + name),
+        overwrite=True,
+        include_optimizer=True
+    )
+    decodedImages = autoEncoder.predict(testData)
+    plotImages(testData, decodedImages, name)
+
+
+
 
 
 def train_autoencoders():
 
-    # vanillaAutoEncoder = get_autoencoder_model_vanilla()
-    # vanillaAutoEncoder.compile(optimizer='adam', loss='mse')
-    #
-    trainData, testData = load_imagenet_dataset()
-    #
-    # vanillaAutoEncoder.fit(trainData, trainData, epochs=50, batch_size=256, shuffle=True, validation_data = (testData, testData))
-    #
-    # encoder = get_VanillaEncoderModel()
-    # decoder = get_VanillaDecoderModel(vanillaAutoEncoder)
-
-
-
-    convAutoEncoder = get_autoencoder_model_convolutional()
-    convAutoEncoder.compile(optimizer='adam', loss='mse')
-    convAutoEncoder.fit(trainData, trainData, epochs=5, batch_size=256, shuffle=True, validation_data = (testData, testData))
-
-    decodedImages = convAutoEncoder.predict(testData)
-    plotImages(testData, decodedImages)
-
-
+    train_save_singleAutoEncoder('conv', 1, 256)
+    train_save_singleAutoEncoder('sparse', 1, 256)
+    train_save_singleAutoEncoder('vanilla', 1, 256)
+    train_save_singleAutoEncoder('multi', 1, 256)
 
     pass
-
 
 def reuse_encoders():
     pass
 
 
-train_autoencoders()
 
 
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser(description='autoencoders')
-#     parser.add_argument('-action',
-#         type=str,
-#         help='action [train|reuse]')
-#
-#     args = parser.parse_args()
-#     if args.action == 'train':
-#         train_autoencoders()
-#     elif args.action == 'reuse':
-#         reuse_encoders()
-#     else:
-#         print('Please use with this param: -action [train|reuse]')
-#
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='autoencoders')
+    parser.add_argument('-action',
+        type=str,
+        help='action [train|reuse]')
+
+    args = parser.parse_args()
+    if args.action == 'train':
+        train_autoencoders()
+    elif args.action == 'reuse':
+        reuse_encoders()
+    else:
+        print('Please use with this param: -action [train|reuse]')
