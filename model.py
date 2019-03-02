@@ -37,7 +37,7 @@ class BaseConfig(object):
 
         # training configuration
         self.keep_checkpoint_max = 10
-        self.save_checkpoints_steps = 100
+        self.save_checkpoints_steps = 500
         self.stop_if_no_increase_hook_max_steps_without_increase = 5000
         self.stop_if_no_increase_hook_min_steps = 50000
         self.stop_if_no_increase_hook_run_every_secs = 120
@@ -199,7 +199,7 @@ class BaseModel(object):
         raise NotImplementedError
 
 
-
+# Implementation of ResNet-32
 class Resnet(BaseModel):
     def init_config(self, data_path, img_augmentation, dynamic_learning_rate, batch_size, params=None):
         self.config = BaseConfig('Resnet', data_path, 
