@@ -62,29 +62,65 @@ def get_autoencoder_sparse(shape=[32, 32, 3], sparsity_weight=5e-3, code_size=10
 
     return x, code, output, total_loss, output_log_scale
 
+
+def get_autoencoder_auto_noise(shape=[32, 32, 3], sparsity_weight=5e-3, code_size=100, noise_level = 0.1):
+    tf.reset_default_graph()
+    x = tf.placeholder(tf.float32, [None] + shape, name='input')
+    x_noisy = x + noise_level * tf.random_normal(tf.shape(x))
+    encoder_16 = downscale_block(x_noisy)
+    encoder_8 = downscale_block(encoder_16)
+    flatten_dim = np.prod(encoder_8.get_shape().as_list()[1:])
+    flat = tf.reshape(encoder_8, [-1, flatten_dim])
+    code = tf.layers.dense(flat, code_size, activation=tf.nn.relu, name='code')
+    hidden_decoder = tf.layers.dense(code, 64, activation=tf.nn.elu)
+    decoder_8 = tf.reshape(hidden_decoder, [-1, 8, 8, 1])
+    decoder_16 = upscale_block(decoder_8)
+    output = upscale_block(decoder_16)
+
+    # calculate loss
+    sparsity_loss = tf.norm(code, ord=1, axis=1)
+    reconstruction_loss = tf.reduce_mean(tf.square(output - x)) # Mean Square Error
+    total_loss = reconstruction_loss + sparsity_weight * sparsity_loss
+
+    # output_log_scale
+    output_log_scale = tf.get_variable("output_log_scale", initializer=tf.constant(0.0, shape=shape))
+
+    return x, code, output, total_loss, output_log_scale
+
+
+
 def save_model(session, k, model_dir='auto_models'):
     os.makedirs(model_dir, exist_ok=True)
     tf.train.Saver().save(session, os.path.join(model_dir, k))
 
-def save_img_reconstruction(k, img, outputs_out, dir='imgs'):
+def save_img_reconstruction(k, img1, img2, outputs_out, dir='imgs'):
     os.makedirs(dir, exist_ok=True)
-    plt.imshow(np.squeeze(img))
-    plt.savefig(os.path.join(dir, k + '_sample'))
 
+    plt.imshow(np.squeeze(img1) + 128)
+    plt.savefig(os.path.join(dir, k + '_sample1'))
+    plt.clf()
+
+    plt.imshow(np.squeeze(img2) )
+    plt.savefig(os.path.join(dir, k + '_sample2'))
+    plt.clf()
+    
     fig=plt.figure(figsize=(10, 10))
     columns = 3
     rows = 3
     for i in range(rows):
         for j in range(columns):
             if i == j:
-                img = np.squeeze(outputs_out[i])
+                img = np.squeeze(outputs_out[i] + 128)
             else:
-                img = np.squeeze(outputs_out[i]) - np.squeeze(outputs_out[j])
+                img = np.squeeze(outputs_out[i]) - np.squeeze(outputs_out[j] + 128)
             fig.add_subplot(columns, rows, (i*rows) + j + 1)
             plt.imshow(img)
     plt.savefig(os.path.join(dir, k + '_econstruction_sample'))
+    plt.clf()
 
-encoder_funcs = {'autoencoder_sparse': get_autoencoder_sparse}
+encoder_funcs = {'autoencoder_sparse': get_autoencoder_sparse,
+                 'autoencoder_auto_noise': get_autoencoder_auto_noise}
+
 def train_autoencoders():
     train_data = load_imagenet_dataset()
 
@@ -112,7 +148,7 @@ def train_autoencoders():
         inputs_data = np.repeat(np.expand_dims(train_data[idx], axis=0), 3, axis=0)
         inputs_out, output_log_scale, outputs_out = session.run([inputs, output_log_scale, outputs], {inputs: inputs_data})
 
-        save_img_reconstruction(k, inputs_out[0], outputs_out)
+        save_img_reconstruction(k, train_data[0], inputs_out[0], outputs_out)
 
         # save model
         save_model(session, k)
