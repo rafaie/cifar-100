@@ -1,0 +1,4 @@
+numpy
+tensorflow
+# if there is GPU available 
+# tensorflow-gpu
