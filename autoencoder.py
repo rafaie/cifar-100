@@ -8,6 +8,8 @@ from util import get_dataset, get_dataset2
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt 
+from operator import mul
+from functools import reduce
 import argparse
 import os
 import util
@@ -37,6 +39,146 @@ def upscale_block(x, scale=2):
 def downscale_block(x, scale=2):
     _, _, _, c = x.get_shape().as_list()
     return tf.layers.conv2d(x, np.floor(c * 1.25), 3, strides=scale, padding='same')
+
+
+
+def conv_block(inputs, filters, downscale=1):
+    """
+    Args:
+        - inputs: 4D tensor of shape NHWC
+        - filters: int
+    """
+    with tf.name_scope('conv_block') as scope:
+        conv = tf.layers.conv2d(inputs, filters, 3, 1, padding='same')
+        down_conv = tf.layers.conv2d(conv, filters, 3, strides=downscale, padding='same')
+        return down_conv
+
+def gaussian_encoder(inputs, latent_size):
+    """inputs should be a tensor of images whose height and width are multiples of 4"""
+    x = conv_block(inputs, 8, downscale=2)
+    x = conv_block(x, 16, downscale=2)
+    mean = tf.layers.dense(x, latent_size)
+    log_scale = tf.layers.dense(x, latent_size)
+    return mean, log_scale
+
+
+def gaussian_sample(mean, log_scale):
+    # noise is zero centered and std. dev. 1
+    gaussian_noise = tf.random_normal(shape=tf.shape(mean))
+    return mean + (tf.exp(log_scale) * gaussian_noise)
+
+
+def upscale_block2(x, scale=2, name='upscale_block'):
+    """[Sub-Pixel Convolution](https://arxiv.org/abs/1609.05158) """
+    n, w, h, c = x.get_shape().as_list()
+    x = tf.layers.conv2d(x, c * scale ** 2, (3, 3), activation=tf.nn.relu, padding='same', name=name)
+    output = tf.depth_to_space(x, scale)
+    return output
+
+def decoder(inputs, output_shape):
+    """output_shape should be a length 3 iterable of ints"""
+    h, w, c = output_shape
+    initial_shape = [h // 4, w // 4, c]
+    initial_size = reduce(mul, initial_shape)
+    x = tf.layers.dense(inputs, initial_size // 64, name='decoder_dense')
+    x = tf.reshape(x, [-1] + initial_shape)
+    x = upscale_block2(x, name='upscale1')
+    return upscale_block2(x, name='upscale2')
+
+# define an epsilon
+EPS = 1e-10
+def std_gaussian_KL_divergence(mu, log_sigma):
+    """Analytic KL distance between N(mu, e^log_sigma) and N(0, 1)"""
+    sigma = tf.exp(log_sigma)
+    return -0.5 * tf.reduce_sum(
+        1 + tf.log(tf.square(sigma)) - tf.square(mu) - tf.square(sigma), 1)
+
+
+def flatten(inputs):
+    """
+    Flattens a tensor along all non-batch dimensions.
+    This is correctly a NOP if the input is already flat.
+    """
+    if len(shape(inputs)) == 2:
+        return inputs
+    else:
+        size = inputs.get_shape().as_list()[1:]
+        return tf.reshape(inputs, [-1, size])
+
+def bernoulli_logp(alpha, sample):
+    """Calculates log prob of sample under bernoulli distribution.
+    
+    Note: args must be in range [0,1]
+    """
+    alpha = flatten(alpha)
+    sample = flatten(sample)
+    return tf.reduce_sum(sample * tf.log(EPS + alpha) +
+                         ((1 - sample) * tf.log(EPS + 1 - alpha)), 1)
+
+def discretized_logistic_logp(mean, logscale, sample, binsize=1 / 256.0):
+    """Calculates log prob of sample under discretized logistic distribution."""
+    scale = tf.exp(logscale)
+    sample = (tf.floor(sample / binsize) * binsize - mean) / scale
+    logp = tf.log(
+        tf.sigmoid(sample + binsize / scale) - tf.sigmoid(sample) + EPS)
+
+    if logp.shape.ndims == 4:
+        logp = tf.reduce_sum(logp, [1, 2, 3])
+    elif logp.shape.ndims == 2:
+        logp = tf.reduce_sum(logp, 1)
+    return logp
+
+
+def vae_loss(inputs, outputs, latent_mean, latent_log_scale, output_dist, output_log_scale=None):
+    """Calculate the VAE loss (aka [ELBO](https://arxiv.org/abs/1312.6114))
+    
+    Args:
+        - inputs: VAE input
+        - outputs: VAE output
+        - latent_mean: parameter of latent distribution
+        - latent_log_scale: log of std. dev. of the latent distribution
+        - output_dist: distribution parameterized by VAE output, must be in ['logistic', 'bernoulli']
+        - output_log_scale: log scale parameter of the output dist if it's logistic, can be learnable
+        
+    Note: output_log_scale must be specified if output_dist is logistic
+    """
+    # Calculate reconstruction loss
+    # Equal to minus the log likelihood of the input data under the VAE's output distribution
+    if output_dist == 'bernoulli':
+        outputs = tf.sigmoid(outputs)
+        reconstruction_loss = -bernoulli_logp(outputs, inputs)
+    elif output_dist == 'logistic':
+        outputs = tf.clip_by_value(outputs, 1 / 512., 1 - 1 / 512.)
+        reconstruction_loss = -discretized_logistic_logp(outputs, output_log_scale, inputs)
+    else:
+        print('Must specify an argument for output_dist in [bernoulli, logistic]')
+    reconstruction_loss = tf.reduce_mean(reconstruction_loss)
+        
+    # Calculate latent loss
+    latent_loss = std_gaussian_KL_divergence(latent_mean, latent_log_scale)
+    latent_loss = tf.reduce_mean(latent_loss)
+    
+    return reconstruction_loss, latent_loss
+
+def get_autoencoder_vae_logistic(img_shape=[32, 32, 3], latent_size=100):
+    tf.reset_default_graph()
+    inputs = tf.placeholder(tf.float32, shape=[None] + img_shape)
+    # VAE
+    with tf.variable_scope("model") as scope:
+        means, log_scales = gaussian_encoder(inputs, latent_size)
+        codes = gaussian_sample(means, log_scales)
+        outputs = decoder(codes, img_shape)
+    # with tf.variable_scope("model", reuse=True) as scope:
+    #     gen_sample = decoder(codes, img_shape)
+
+    # calculate loss with learnable parameter for output log_scale
+    output_log_scale = tf.get_variable("output_log_scale", initializer=tf.constant(0.0, shape=img_shape))
+    print(inputs.shape, outputs.shape)
+    reconstruction_loss, latent_loss = vae_loss(inputs, outputs, means, log_scales, 'logistic', output_log_scale)
+
+    total_loss = reconstruction_loss + latent_loss
+
+    return inputs, codes, outputs, total_loss, output_log_scale
 
 
 def get_autoencoder_sparse(shape=[32, 32, 3], sparsity_weight=5e-3, code_size=100):
@@ -119,7 +261,8 @@ def save_img_reconstruction(k, img1, img2, outputs_out, dir='imgs'):
     plt.clf()
 
 encoder_funcs = {'autoencoder_sparse': get_autoencoder_sparse,
-                 'autoencoder_auto_noise': get_autoencoder_auto_noise}
+                 'autoencoder_auto_noise': get_autoencoder_auto_noise,
+                 'autoencoder_vae_logistic': get_autoencoder_vae_logistic}
 
 def train_autoencoders():
     train_data = load_imagenet_dataset()
