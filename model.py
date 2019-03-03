@@ -48,6 +48,7 @@ class BaseConfig(object):
         self.dynamic_learning_rate = dynamic_learning_rate
         self.data_path = data_path
         self.learning_rate_warm_up_step = 10000
+        self.max_steps = 0
 
 
 class BaseModel(object):
@@ -59,10 +60,6 @@ class BaseModel(object):
         self.config = None  
         self.init_config(data_path, img_augmentation, dynamic_learning_rate,
                          batch_size, params)
-        # self.config.data_path = data_path
-        # self.config.img_augmentation = img_augmentation
-        # self.config.dynamic_learning_rate = dynamic_learning_rate
-        # self.config.batch_size = batch_size
 
 
     def do_augmentation(self, image, lable):
@@ -112,7 +109,7 @@ class BaseModel(object):
                                            config=cfg)
 
         train_hooks, eval_hooks = self.get_hooks(estimator)
-        train_spec = tf.estimator.TrainSpec(input_fn=it_train, hooks=train_hooks)
+        train_spec = tf.estimator.TrainSpec(input_fn=it_train, hooks=train_hooks, max_steps=self.config.max_steps)
         eval_spec = tf.estimator.EvalSpec(input_fn=it_eval, hooks=eval_hooks, throttle_secs=self.config.throttle_secs)
         tf.estimator.train_and_evaluate(estimator, train_spec, eval_spec)
 
