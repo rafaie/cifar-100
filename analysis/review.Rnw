@@ -1,0 +1,119 @@
+\documentclass{article}
+
+\begin{document}
+
+<<include=FALSE, warning=FALSE>>=
+opts_chunk$set(fig.align='center', message=FALSE, cache=FALSE)
+
+library(xtable)
+library(GGally)
+library(ggplot2)
+library(data.table)
+library(lubridate)
+library(stringr)
+library(dplyr)
+library(gtable)
+library(grid)
+@
+
+\section{Local models}
+
+
+<<  warning=FALSE, echo=FALSE, fig.width=11, fig.height=4>>=
+
+#Title,Model,Epoch,st,train_cross_entropy,valid_cross_entropy,valid_accuracy
+result_train <- read.csv('../data/local_result.csv', header=TRUE, sep=",", row.names=NULL)
+
+@
+
+
+<<  warning=FALSE, echo=FALSE, fig.width=9, fig.height=7>>=
+
+ggplot(train_reg, aes(x=Learning_rate, y=acc)) +
+    geom_boxplot(width=0.2, outlier.size = 0.4) +
+    stat_summary(fun.y=median, geom="point", size=1.5, color="red")+
+    labs(x="Best Feature List", y="Accuracy") + 
+  theme_light(base_size = 10.5)+ 
+    theme(legend.position="right")  + theme(axis.text.x = element_text(angle = 90, 
+          hjust = 1,vjust = -0.5)) + theme(plot.title = element_text(size=10)) + facet_grid(Model~Dropout)
+
+@
+
+<< warning=FALSE, echo=FALSE, results='asis'>>=
+train_reg_det <- train_reg %>% group_by( Dropout, Model, Learning_rate) %>% summarise(mean_acc=mean(acc))
+xtable(train_reg_det)
+@
+
+
+<<  warning=FALSE, echo=FALSE, fig.width=11, fig.height=9>>=
+
+#Title,Model,Epoch,st,train_cross_entropy,valid_cross_entropy,valid_accuracy
+
+
+train2 <- train[train$Learning_rate=='Learning_rate_0.0001',]
+
+train_reg2 <- train2 %>% group_by(`Model Name`, Dropout, Learning_rate,
+                                Model, Regularizer) %>% summarise(acc=max(valid_accuracy))
+
+@
+
+
+<<  warning=FALSE, echo=FALSE, fig.width=9, fig.height=7>>=
+
+ggplot(train2, aes(x=Regularizer, y=valid_accuracy)) +
+    geom_boxplot(width=0.2, outlier.size = 0.4) +
+    stat_summary(fun.y=median, geom="point", size=1.5, color="red")+
+    labs(y="Model Tyep", x="Dropout Situation for every regulizer") + 
+  theme_light(base_size = 10.5)+ 
+    theme(legend.position="right")  + theme(axis.text.x = element_text(angle = 90, 
+          hjust = 1,vjust = -0.5)) + theme(plot.title = element_text(size=10)) + facet_grid(Model~Dropout)
+
+@
+
+<<  warning=FALSE, echo=FALSE, fig.width=9, fig.height=7>>=
+
+ggplot(train_reg2, aes(x=Regularizer, y=acc)) +
+    #geom_boxplot(width=0.2, outlier.size = 0.4) +
+    stat_summary(fun.y=median, geom="point", size=1.5, color="red")+
+    labs(y="Model Tyep", x="Dropout Situation for every regulizer") + 
+  theme_light(base_size = 10.5)+ 
+    theme(legend.position="right")  + theme(axis.text.x = element_text(angle = 90, 
+          hjust = 1,vjust = -0.5)) + theme(plot.title = element_text(size=10)) + facet_grid(Model~Dropout)
+
+@
+
+
+<< warning=FALSE, echo=FALSE, results='asis'>>=
+train_reg_det <- train_reg2 %>% group_by(`Model Name`, Dropout, Model, Regularizer) %>% summarise(mean_acc=mean(acc))
+xtable(train_reg_det)
+
+best_model <- train_reg_det[train_reg_det$mean_acc>0.891,]
+
+train3 <- train2[train2$`Model Name` %in%  best_model$`Model Name`,]
+
+train3$id = train3$Epoch * 220 + train3$st
+
+xtable(best_model)
+
+@
+
+
+
+<<  warning=FALSE, echo=FALSE, fig.width=9, fig.height=7>>=
+
+ggplot(train3, aes(x=id, y=valid_accuracy)) +
+    geom_line() +
+    labs(x="Best Feature List", y="Validation Accuracy") + 
+  theme_light(base_size = 10.5)+ 
+    theme(legend.position="right")  + theme(axis.text.x = element_text(angle = 90, 
+          hjust = 1,vjust = -0.5)) + theme(plot.title = element_text(size=10)) + facet_grid(`Model Name`~.)
+
+@
+
+
+
+
+
+
+
+\end{document}
